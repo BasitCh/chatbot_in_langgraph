@@ -5,9 +5,13 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import InMemorySaver
 from dotenv import load_dotenv
+import os
+import streamlit as st
 
 load_dotenv()
 
+# Load from Streamlit secrets into environment
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 llm = ChatOpenAI()
 
 class ChatState(TypedDict):
