@@ -12,7 +12,8 @@ try:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 except Exception:
     load_dotenv()
-llm = ChatOpenAI()
+
+llm = ChatOpenAI(model= 'gpt-4o')
 
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
