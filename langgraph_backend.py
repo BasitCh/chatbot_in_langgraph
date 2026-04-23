@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 import os
 import streamlit as st
 
-load_dotenv()
-
-# Load from Streamlit secrets into environment
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+try:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    load_dotenv()
 llm = ChatOpenAI()
 
 class ChatState(TypedDict):
