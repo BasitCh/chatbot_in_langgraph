@@ -92,7 +92,10 @@ if user_input:
         def get_chunks():
             for chunk, _ in chatbot.stream(
                 input={'messages': [HumanMessage(content=user_input)]},
-                config={'configurable': {'thread_id': curr_id}},
+                config={'configurable': {'thread_id': curr_id},
+                        'metadata': {'thread_id': curr_id},
+                        'run_name': 'chat_turn'
+                        },
                 stream_mode='messages'
             ):
                 yield chunk.content
