@@ -28,11 +28,9 @@ if 'chat_threads' not in st.session_state:
     st.session_state['chat_threads'] = retrieve_all_threads()
 
 if 'thread_titles' not in st.session_state:
-    # Hydrate titles from the Database
     st.session_state['thread_titles'] = fetch_all_titles()
 
 if 'thread_id' not in st.session_state:
-    # Start with the last used thread or a brand new one
     if st.session_state['chat_threads']:
         st.session_state['thread_id'] = st.session_state['chat_threads'][-1]
     else:
@@ -47,7 +45,6 @@ if st.sidebar.button("+ New Chat", use_container_width=True):
     new_id = generate_thread_id()
     st.session_state['thread_id'] = new_id
     st.session_state['chat_history'] = []
-    # Note: We don't add it to chat_threads list until the first message is sent
     st.rerun()
 
 st.sidebar.divider()
@@ -73,33 +70,44 @@ user_input = st.chat_input("Say something...")
 if user_input:
     curr_id = st.session_state['thread_id']
     
-    # 1. Handle Title Generation & Saving
     if curr_id not in st.session_state['thread_titles']:
         new_title = make_title(user_input)
         st.session_state['thread_titles'][curr_id] = new_title
-        save_single_title(curr_id, new_title) # DATABASE SAVE (Single Row)
+        save_single_title(curr_id, new_title)
         
         if curr_id not in st.session_state['chat_threads']:
             st.session_state['chat_threads'].append(curr_id)
 
-    # 2. Add to UI
     st.session_state['chat_history'].append({'role': 'user', 'content': user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
     
-    # 3. Stream AI Response
+    # --- 3. Stream AI Response with Status Container ---
     with st.chat_message("assistant"):
-        def get_chunks():
-            for chunk, _ in chatbot.stream(
+        with st.status("Processing...", expanded=False) as status:
+            ai_msg_container = st.empty()
+            ai_msg = ""
+            
+            # Using stream_mode="updates" to detect node transitions
+            for chunk in chatbot.stream(
                 input={'messages': [HumanMessage(content=user_input)]},
-                config={'configurable': {'thread_id': curr_id},
-                        'metadata': {'thread_id': curr_id},
-                        'run_name': 'chat_turn'
-                        },
-                stream_mode='messages'
+                config={'configurable': {'thread_id': curr_id}},
+                stream_mode="updates"
             ):
-                yield chunk.content
-        ai_msg = st.write_stream(get_chunks())
+                # If the 'tools' node is running, update the status label
+                if "tools" in chunk:
+                    status.update(label="Working on it...", state="running", expanded=True)
+                
+                # If 'chat_node' is running, stream the text to the UI
+                if "chat_node" in chunk:
+                    new_messages = chunk["chat_node"]["messages"]
+                    if new_messages:
+                        # Append the content of the latest message
+                        new_content = new_messages[-1].content
+                        ai_msg += new_content
+                        ai_msg_container.markdown(ai_msg)
+            
+            status.update(label="Done", state="complete", expanded=False)
     
     st.session_state['chat_history'].append({'role': 'assistant', 'content': ai_msg})
     st.rerun()

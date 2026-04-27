@@ -1,4 +1,4 @@
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import sqlite3
 import os
 import streamlit as st
+from langgraph.prebuilt import ToolNode, tools_condition
+from chatbot_tools import ChatbotTools
 
 try:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
@@ -16,12 +18,17 @@ except Exception:
 
 llm = ChatOpenAI(model= 'gpt-4o')
 
+tool_system = ChatbotTools()
+tools = tool_system.getTools()
+
+llm_with_tools = llm.bind_tools(tools)
+
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
 def chat_node(state: ChatState):
     messages = state['messages']
-    response = llm.invoke(messages)
+    response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
 #check pointer
@@ -62,7 +69,11 @@ init_db()
 
 graph = StateGraph(ChatState)
 graph.add_node("chat_node", chat_node)
+tool_node = ToolNode(tools= tools)
+graph.add_node("tools", tool_node)
+
 graph.add_edge(START, "chat_node")
-graph.add_edge("chat_node", END)
+graph.add_conditional_edges('chat_node', tools_condition)
+graph.add_edge('tools', 'chat_node')
 
 chatbot = graph.compile(checkpointer= check_pointer)
