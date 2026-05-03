@@ -1,6 +1,9 @@
-streamlit
+chainlit
 langchain-core
 langchain-openai
+langchain-community
 langgraph
-langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+asyncpg
 python-dotenv
