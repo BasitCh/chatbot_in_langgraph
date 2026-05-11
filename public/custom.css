@@ -1,0 +1,46 @@
+/* -----------------------------------------------------------------------
+ * Basit AI — custom theming
+ * Hides all chainlit branding (links + watermark) and softens the login
+ * screen. Selectors target stable structural attributes so they keep
+ * working across chainlit minor versions.
+ * --------------------------------------------------------------------- */
+
+/* Hide every link/anchor pointing at chainlit (footer "Built with chainlit",
+ * GitHub link, docs link). The href attribute selector survives DOM
+ * refactors that change class names. */
+a[href*="chainlit"],
+a[href*="Chainlit"] {
+    display: none !important;
+}
+
+/* Hide the watermark text "Built with..." that sits next to the link. */
+.watermark,
+[class*="watermark"],
+[class*="Watermark"] {
+    display: none !important;
+}
+
+/* Tighten up the login screen — center the logo nicely and give the
+ * card a slightly larger, more readable button. */
+.login-page,
+[class*="LoginPage"] {
+    background: radial-gradient(
+        ellipse at top,
+        rgba(99, 102, 241, 0.08),
+        transparent 60%
+    );
+}
+
+/* Make the assistant logo on top of the login form a bit larger and crisper. */
+.login-page img,
+[class*="LoginPage"] img {
+    max-height: 64px;
+    width: auto;
+}
+
+/* Round + drop-shadow on assistant avatars in chat. */
+.message-avatar img,
+[class*="MessageAvatar"] img {
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}

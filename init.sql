@@ -1,137 +1,106 @@
--- Chainlit Official Data Layer schema (Postgres)
--- Source: https://github.com/Chainlit/chainlit-datalayer
--- Includes the base schema (Chainlit 2.0.0) + every published migration up
--- through Chainlit 2.9.4. Postgres auto-applies this on first container
--- startup because the file is mounted into /docker-entrypoint-initdb.d/.
+-- Chainlit 2.11.x SQLAlchemyDataLayer schema (Postgres).
+-- Tables/columns derived from chainlit/data/sql_alchemy.py in v2.11.1.
+-- Safe to re-run: it drops only chainlit's tables, not LangGraph's
+-- checkpoint_* tables.
+
+-- 1. Drop any prior chainlit tables (both old PascalCase and lowercase plural
+--    variants) so we converge on one schema.
+DROP TABLE IF EXISTS feedbacks CASCADE;
+DROP TABLE IF EXISTS elements  CASCADE;
+DROP TABLE IF EXISTS steps     CASCADE;
+DROP TABLE IF EXISTS threads   CASCADE;
+DROP TABLE IF EXISTS users     CASCADE;
+
+DROP TABLE IF EXISTS "Feedback" CASCADE;
+DROP TABLE IF EXISTS "Element"  CASCADE;
+DROP TABLE IF EXISTS "Step"     CASCADE;
+DROP TABLE IF EXISTS "Thread"   CASCADE;
+DROP TABLE IF EXISTS "User"     CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TYPE "StepType" AS ENUM (
-    'assistant_message',
-    'embedding',
-    'llm',
-    'retrieval',
-    'rerank',
-    'run',
-    'system_message',
-    'tool',
-    'undefined',
-    'user_message'
+-- 2. users -----------------------------------------------------------------
+CREATE TABLE users (
+    id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+    identifier  TEXT  NOT NULL UNIQUE,
+    metadata    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "createdAt" TEXT
 );
 
-CREATE TABLE "Element" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "threadId" TEXT,
-    "stepId" TEXT NOT NULL,
-    "metadata" JSONB NOT NULL,
-    "mime" TEXT,
-    "name" TEXT NOT NULL,
-    "objectKey" TEXT,
-    "url" TEXT,
+-- 3. threads ---------------------------------------------------------------
+CREATE TABLE threads (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "createdAt"      TEXT,
+    name             TEXT,
+    "userId"         UUID REFERENCES users(id) ON DELETE CASCADE,
+    "userIdentifier" TEXT,
+    tags             TEXT[],
+    metadata         JSONB DEFAULT '{}'::jsonb
+);
+
+-- 4. steps -----------------------------------------------------------------
+CREATE TABLE steps (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT,
+    type            TEXT NOT NULL,
+    "threadId"      UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    "parentId"      UUID,
+    streaming       BOOLEAN NOT NULL DEFAULT false,
+    "waitForAnswer" BOOLEAN,
+    "isError"       BOOLEAN NOT NULL DEFAULT false,
+    metadata        JSONB   DEFAULT '{}'::jsonb,
+    tags            TEXT[],
+    input           TEXT,
+    output          TEXT,
+    "createdAt"     TEXT,
+    command         TEXT,
+    start           TEXT,
+    "end"           TEXT,
+    generation      JSONB,
+    "showInput"     TEXT DEFAULT 'json',
+    language        TEXT,
+    indent          INTEGER,
+    "defaultOpen"   BOOLEAN DEFAULT false,
+    "autoCollapse"  BOOLEAN DEFAULT false,
+    modes           JSONB
+);
+
+-- 5. elements --------------------------------------------------------------
+CREATE TABLE elements (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "threadId"    UUID REFERENCES threads(id) ON DELETE CASCADE,
+    type          TEXT,
+    url           TEXT,
     "chainlitKey" TEXT,
-    "display" TEXT,
-    "size" TEXT,
-    "language" TEXT,
-    "page" INTEGER,
-    "props" JSONB,
-    CONSTRAINT "Element_pkey" PRIMARY KEY ("id")
+    name          TEXT NOT NULL,
+    display       TEXT,
+    "objectKey"   TEXT,
+    size          TEXT,
+    page          INTEGER,
+    language      TEXT,
+    "forId"       UUID,
+    mime          TEXT,
+    props         JSONB
 );
 
-CREATE TABLE "User" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "metadata" JSONB NOT NULL,
-    "identifier" TEXT NOT NULL,
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+-- 6. feedbacks -------------------------------------------------------------
+CREATE TABLE feedbacks (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "forId"    UUID NOT NULL,
+    "threadId" UUID,
+    value      INTEGER NOT NULL,
+    comment    TEXT
 );
 
-CREATE TABLE "Feedback" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "stepId" TEXT,
-    "name" TEXT NOT NULL,
-    "value" DOUBLE PRECISION NOT NULL,
-    "comment" TEXT,
-    CONSTRAINT "Feedback_pkey" PRIMARY KEY ("id")
-);
-
-CREATE TABLE "Step" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "parentId" TEXT,
-    "threadId" TEXT,
-    "input" TEXT,
-    "metadata" JSONB NOT NULL,
-    "name" TEXT,
-    "output" TEXT,
-    "type" "StepType" NOT NULL,
-    "showInput" TEXT DEFAULT 'json',
-    "isError" BOOLEAN DEFAULT false,
-    "startTime" TIMESTAMP(3) NOT NULL,
-    "endTime" TIMESTAMP(3) NOT NULL,
-    "command" TEXT,
-    "defaultOpen" BOOLEAN,
-    "modes" JSONB,
-    CONSTRAINT "Step_pkey" PRIMARY KEY ("id")
-);
-
-CREATE TABLE "Thread" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "deletedAt" TIMESTAMP(3),
-    "name" TEXT,
-    "metadata" JSONB NOT NULL,
-    "userId" TEXT,
-    "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    CONSTRAINT "Thread_pkey" PRIMARY KEY ("id")
-);
-
-CREATE INDEX "Element_stepId_idx" ON "Element"("stepId");
-CREATE INDEX "Element_threadId_idx" ON "Element"("threadId");
-CREATE INDEX "User_identifier_idx" ON "User"("identifier");
-CREATE UNIQUE INDEX "User_identifier_key" ON "User"("identifier");
-CREATE INDEX "Feedback_createdAt_idx" ON "Feedback"("createdAt");
-CREATE INDEX "Feedback_name_idx" ON "Feedback"("name");
-CREATE INDEX "Feedback_stepId_idx" ON "Feedback"("stepId");
-CREATE INDEX "Feedback_value_idx" ON "Feedback"("value");
-CREATE INDEX "Feedback_name_value_idx" ON "Feedback"("name", "value");
-CREATE INDEX "Step_createdAt_idx" ON "Step"("createdAt");
-CREATE INDEX "Step_endTime_idx" ON "Step"("endTime");
-CREATE INDEX "Step_parentId_idx" ON "Step"("parentId");
-CREATE INDEX "Step_startTime_idx" ON "Step"("startTime");
-CREATE INDEX "Step_threadId_idx" ON "Step"("threadId");
-CREATE INDEX "Step_type_idx" ON "Step"("type");
-CREATE INDEX "Step_name_idx" ON "Step"("name");
-CREATE INDEX "Step_threadId_startTime_endTime_idx" ON "Step"("threadId", "startTime", "endTime");
-CREATE INDEX "Thread_createdAt_idx" ON "Thread"("createdAt");
-CREATE INDEX "Thread_name_idx" ON "Thread"("name");
-
-ALTER TABLE "Element"
-    ADD CONSTRAINT "Element_stepId_fkey"
-    FOREIGN KEY ("stepId") REFERENCES "Step"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "Element"
-    ADD CONSTRAINT "Element_threadId_fkey"
-    FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "Feedback"
-    ADD CONSTRAINT "Feedback_stepId_fkey"
-    FOREIGN KEY ("stepId") REFERENCES "Step"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
-ALTER TABLE "Step"
-    ADD CONSTRAINT "Step_parentId_fkey"
-    FOREIGN KEY ("parentId") REFERENCES "Step"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "Step"
-    ADD CONSTRAINT "Step_threadId_fkey"
-    FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "Thread"
-    ADD CONSTRAINT "Thread_userId_fkey"
-    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- 7. indexes that keep the thread sidebar + history queries fast -----------
+CREATE INDEX idx_users_identifier         ON users(identifier);
+CREATE INDEX idx_threads_user             ON threads("userId");
+CREATE INDEX idx_threads_useridentifier   ON threads("userIdentifier");
+CREATE INDEX idx_threads_createdat        ON threads("createdAt" DESC);
+CREATE INDEX idx_steps_thread             ON steps("threadId");
+CREATE INDEX idx_steps_parent             ON steps("parentId");
+CREATE INDEX idx_steps_createdat          ON steps("createdAt");
+CREATE INDEX idx_steps_thread_createdat   ON steps("threadId", "createdAt");
+CREATE INDEX idx_elements_thread          ON elements("threadId");
+CREATE INDEX idx_elements_for             ON elements("forId");
+CREATE INDEX idx_feedbacks_for            ON feedbacks("forId");
